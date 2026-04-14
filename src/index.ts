@@ -2,6 +2,9 @@
 
 import { createServer as createHttpServer, IncomingMessage, ServerResponse } from "node:http";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -9,6 +12,27 @@ import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { BookStackClient, BookStackConfig } from "./bookstack-client.js";
+
+const PKG_VERSION: string = (() => {
+  try {
+    const pkgPath = join(dirname(fileURLToPath(import.meta.url)), "..", "package.json");
+    return JSON.parse(readFileSync(pkgPath, "utf8")).version as string;
+  } catch {
+    return "0.0.0";
+  }
+})();
+
+const READ_ONLY_ANNOTATIONS = {
+  readOnlyHint: true,
+  openWorldHint: true
+} as const;
+
+const WRITE_ANNOTATIONS = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  idempotentHint: false,
+  openWorldHint: true
+} as const;
 
 function getRequiredEnvVar(name: string): string {
   const value = process.env[name];
@@ -23,7 +47,7 @@ function buildServer(config: BookStackConfig): McpServer {
   const client = new BookStackClient(config);
   const server = new McpServer({
     name: "bookstack-mcp",
-    version: "2.1.0"
+    version: PKG_VERSION
   });
 
   registerTools(server, client, config);
@@ -31,8 +55,16 @@ function buildServer(config: BookStackConfig): McpServer {
 }
 
 function registerTools(server: McpServer, client: BookStackClient, config: BookStackConfig): void {
+  // Helpers wrap registerTool and inject MCP tool annotations so clients can
+  // distinguish read-only from destructive operations. Typed loosely to defer
+  // to the SDK's generic overloads at the call sites.
+  const readTool: typeof server.registerTool = ((name: string, cfg: any, handler: any) =>
+    server.registerTool(name, { ...cfg, annotations: { ...READ_ONLY_ANNOTATIONS, ...(cfg.annotations ?? {}) } }, handler)) as any;
+  const writeTool: typeof server.registerTool = ((name: string, cfg: any, handler: any) =>
+    server.registerTool(name, { ...cfg, annotations: { ...WRITE_ANNOTATIONS, ...(cfg.annotations ?? {}) } }, handler)) as any;
+
   // Register read-only tools
-  server.registerTool(
+  readTool(
     "get_capabilities",
     {
       title: "Get BookStack Capabilities",
@@ -42,7 +74,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
     async () => {
       const capabilities = {
         server_name: "BookStack MCP Server",
-        version: "2.1.0",
+        version: PKG_VERSION,
         write_operations_enabled: config.enableWrite,
         available_tools: config.enableWrite ? "All tools enabled" : "Read-only tools only",
         security_note: config.enableWrite
@@ -55,7 +87,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
     }
   );
 
-  server.registerTool(
+  readTool(
     "search_content",
     {
       title: "Search BookStack Content",
@@ -79,7 +111,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
     }
   );
 
-  server.registerTool(
+  readTool(
     "search_pages",
     {
       title: "Search Pages",
@@ -103,7 +135,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
     }
   );
 
-  server.registerTool(
+  readTool(
     "get_books",
     {
       title: "List Books",
@@ -128,7 +160,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
     }
   );
 
-  server.registerTool(
+  readTool(
     "get_book",
     {
       title: "Get Book Details",
@@ -145,7 +177,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
     }
   );
 
-  server.registerTool(
+  readTool(
     "get_pages",
     {
       title: "List Pages",
@@ -174,7 +206,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
     }
   );
 
-  server.registerTool(
+  readTool(
     "get_page",
     {
       title: "Get Page Content",
@@ -198,7 +230,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
     }
   );
 
-  server.registerTool(
+  readTool(
     "get_chapters",
     {
       title: "List Chapters",
@@ -217,7 +249,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
     }
   );
 
-  server.registerTool(
+  readTool(
     "get_chapter",
     {
       title: "Get Chapter Details",
@@ -234,7 +266,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
     }
   );
 
-  server.registerTool(
+  readTool(
     "export_page",
     {
       title: "Export Page",
@@ -271,7 +303,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
     }
   );
 
-  server.registerTool(
+  readTool(
     "export_book",
     {
       title: "Export Book",
@@ -305,7 +337,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
     }
   );
 
-  server.registerTool(
+  readTool(
     "export_chapter",
     {
       title: "Export Chapter",
@@ -340,7 +372,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
     }
   );
 
-  server.registerTool(
+  readTool(
     "get_recent_changes",
     {
       title: "Get Recent Changes",
@@ -363,7 +395,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
     }
   );
 
-  server.registerTool(
+  readTool(
     "get_shelves",
     {
       title: "List Shelves",
@@ -388,7 +420,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
     }
   );
 
-  server.registerTool(
+  readTool(
     "get_shelf",
     {
       title: "Get Shelf Details",
@@ -405,7 +437,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
     }
   );
 
-  server.registerTool(
+  readTool(
     "get_attachments",
     {
       title: "List Attachments",
@@ -430,7 +462,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
     }
   );
 
-  server.registerTool(
+  readTool(
     "get_attachment",
     {
       title: "Get Attachment Details",
@@ -449,7 +481,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
 
   // Register write tools if enabled
   if (config.enableWrite) {
-    server.registerTool(
+    writeTool(
       "create_page",
       {
         title: "Create Page",
@@ -476,7 +508,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
       }
     );
 
-    server.registerTool(
+    writeTool(
       "update_page",
       {
         title: "Update Page",
@@ -500,7 +532,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
       }
     );
 
-    server.registerTool(
+    writeTool(
       "create_shelf",
       {
         title: "Create Shelf",
@@ -528,7 +560,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
       }
     );
 
-    server.registerTool(
+    writeTool(
       "update_shelf",
       {
         title: "Update Shelf",
@@ -557,7 +589,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
       }
     );
 
-    server.registerTool(
+    writeTool(
       "delete_shelf",
       {
         title: "Delete Shelf",
@@ -574,7 +606,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
       }
     );
 
-    server.registerTool(
+    writeTool(
       "create_attachment",
       {
         title: "Create Attachment",
@@ -597,7 +629,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
       }
     );
 
-    server.registerTool(
+    writeTool(
       "update_attachment",
       {
         title: "Update Attachment",
@@ -621,7 +653,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
       }
     );
 
-    server.registerTool(
+    writeTool(
       "delete_attachment",
       {
         title: "Delete Attachment",
@@ -652,10 +684,31 @@ type AnyTransport = StreamableHTTPServerTransport | SSEServerTransport;
 
 async function startHttp(config: BookStackConfig): Promise<void> {
   const port = parseInt(process.env.MCP_HTTP_PORT ?? "8080", 10);
-  const host = process.env.MCP_HTTP_HOST ?? "0.0.0.0";
+  const host = process.env.MCP_HTTP_HOST ?? "127.0.0.1";
   const mcpPath = process.env.MCP_HTTP_PATH ?? "/mcp";
   const ssePath = process.env.MCP_SSE_PATH ?? "/sse";
   const messagesPath = process.env.MCP_MESSAGES_PATH ?? "/messages";
+
+  // DNS rebinding protection: validate the Host header against an allowlist.
+  // Loopback binds default to localhost-only; other binds require an explicit
+  // MCP_HTTP_ALLOWED_HOSTS allowlist (comma-separated hostnames, no port).
+  const isLoopback = host === "127.0.0.1" || host === "localhost" || host === "::1";
+  const allowedHostsEnv = process.env.MCP_HTTP_ALLOWED_HOSTS;
+  const allowedHosts: string[] | null = allowedHostsEnv
+    ? allowedHostsEnv.split(",").map((h) => h.trim().toLowerCase()).filter(Boolean)
+    : isLoopback
+      ? ["localhost", "127.0.0.1", "[::1]"]
+      : null;
+
+  const validateHost = (req: IncomingMessage): string | null => {
+    if (!allowedHosts) return null; // user opted out by binding non-loopback without allowlist
+    const hostHeader = (req.headers.host ?? "").toLowerCase();
+    if (!hostHeader) return "Missing Host header";
+    const hostname = hostHeader.startsWith("[")
+      ? hostHeader.slice(0, hostHeader.indexOf("]") + 1)
+      : hostHeader.split(":")[0];
+    return allowedHosts.includes(hostname) ? null : `Host '${hostname}' not allowed`;
+  };
 
   const transports: Record<string, AnyTransport> = {};
 
@@ -678,6 +731,12 @@ async function startHttp(config: BookStackConfig): Promise<void> {
 
   const httpServer = createHttpServer(async (req, res) => {
     try {
+      const hostError = validateHost(req);
+      if (hostError) {
+        sendJson(res, 421, { error: "Misdirected Request", message: hostError });
+        return;
+      }
+
       const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
       const pathname = url.pathname;
 
@@ -771,6 +830,11 @@ async function startHttp(config: BookStackConfig): Promise<void> {
     console.error(`BookStack MCP server listening on http://${host}:${port}`);
     console.error(`  Streamable HTTP: ${mcpPath}  (recommended)`);
     console.error(`  Legacy SSE:      GET ${ssePath}, POST ${messagesPath}?sessionId=...`);
+    console.error(
+      allowedHosts
+        ? `  Allowed Host headers: ${allowedHosts.join(", ")}`
+        : `  Host header validation: DISABLED (set MCP_HTTP_ALLOWED_HOSTS to enable)`
+    );
   });
 
   const shutdown = async () => {

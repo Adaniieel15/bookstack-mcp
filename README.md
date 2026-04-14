@@ -114,10 +114,13 @@ mcpServers:
 |----------|---------|-------------|
 | `MCP_TRANSPORT` | `stdio` | Set to `http` to enable the HTTP server |
 | `MCP_HTTP_PORT` | `8080` | Port to listen on |
-| `MCP_HTTP_HOST` | `0.0.0.0` | Bind address |
+| `MCP_HTTP_HOST` | `127.0.0.1` | Bind address. Loopback by default for safety |
+| `MCP_HTTP_ALLOWED_HOSTS` | *(loopback only)* | Comma-separated allowlist of `Host` header hostnames for DNS rebinding protection. Required when binding to a non-loopback address |
 | `MCP_HTTP_PATH` | `/mcp` | Streamable HTTP endpoint |
 | `MCP_SSE_PATH` | `/sse` | Legacy SSE stream endpoint |
 | `MCP_MESSAGES_PATH` | `/messages` | Legacy SSE POST endpoint |
+
+When binding to `0.0.0.0` (e.g. inside a container reachable from other services), set `MCP_HTTP_ALLOWED_HOSTS` to the hostnames LibreChat will use to reach this server, e.g. `MCP_HTTP_ALLOWED_HOSTS=bookstack-mcp,bookstack-mcp.internal`.
 
 Restart LibreChat after config changes.
 
