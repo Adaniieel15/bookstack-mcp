@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer, ResourceTemplate } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
@@ -51,7 +51,112 @@ function buildServer(config: BookStackConfig): McpServer {
   });
 
   registerTools(server, client, config);
+  registerResources(server, client);
   return server;
+}
+
+function registerResources(server: McpServer, client: BookStackClient): void {
+  // bookstack://book/{id} — every book as a discoverable, addressable resource
+  server.registerResource(
+    "book",
+    new ResourceTemplate("bookstack://book/{id}", {
+      list: async () => {
+        const books = await client.getBooks({ count: 500 });
+        return {
+          resources: (books.data ?? []).map((b: any) => ({
+            uri: `bookstack://book/${b.id}`,
+            name: b.name,
+            description: b.summary ?? b.description ?? undefined,
+            mimeType: "application/json"
+          }))
+        };
+      },
+      complete: {
+        id: async (value: string) => {
+          if (!value) return [];
+          const results = await client.searchContent(value, { type: "book", count: 20 });
+          return (results.results ?? []).map((r: any) => String(r.id));
+        }
+      }
+    }),
+    {
+      title: "BookStack Book",
+      description: "A BookStack book exposed as an MCP resource",
+      mimeType: "application/json"
+    },
+    async (uri: URL, variables) => {
+      const id = Number(variables.id);
+      if (!Number.isFinite(id) || id < 1) {
+        throw new Error(`Invalid book id: ${variables.id}`);
+      }
+      const book = await client.getBook(id);
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: "application/json",
+          text: JSON.stringify(book, null, 2)
+        }]
+      };
+    }
+  );
+
+  // bookstack://page/{id} — pages as resources, content returned as markdown
+  server.registerResource(
+    "page",
+    new ResourceTemplate("bookstack://page/{id}", {
+      list: async () => {
+        const pages = await client.getPages({ count: 500 });
+        return {
+          resources: (pages.data ?? []).map((p: any) => ({
+            uri: `bookstack://page/${p.id}`,
+            name: p.name,
+            description: p.content_preview ?? p.location ?? undefined,
+            mimeType: "text/markdown"
+          }))
+        };
+      },
+      complete: {
+        id: async (value: string) => {
+          if (!value) return [];
+          const results = await client.searchContent(value, { type: "page", count: 20 });
+          return (results.results ?? []).map((r: any) => String(r.id));
+        }
+      }
+    }),
+    {
+      title: "BookStack Page",
+      description: "A BookStack page exposed as an MCP resource (markdown content)",
+      mimeType: "text/markdown"
+    },
+    async (uri: URL, variables) => {
+      const id = Number(variables.id);
+      if (!Number.isFinite(id) || id < 1) {
+        throw new Error(`Invalid page id: ${variables.id}`);
+      }
+      const page = await client.getPage(id, { format: "markdown" });
+      return {
+        contents: [{
+          uri: uri.href,
+          mimeType: "text/markdown",
+          text: page.content ?? ""
+        }, {
+          uri: `${uri.href}#metadata`,
+          mimeType: "application/json",
+          text: JSON.stringify({
+            id: page.id,
+            name: page.name,
+            book_id: page.book_id,
+            chapter_id: page.chapter_id,
+            url: page.url,
+            word_count: page.word_count,
+            last_updated_friendly: page.last_updated_friendly,
+            content_truncated: page.content_truncated,
+            content_total_chars: page.content_total_chars
+          }, null, 2)
+        }]
+      };
+    }
+  );
 }
 
 function registerTools(server: McpServer, client: BookStackClient, config: BookStackConfig): void {

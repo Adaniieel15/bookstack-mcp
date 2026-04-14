@@ -135,6 +135,17 @@ This repo ships a Claude Code plugin manifest (`.claude-plugin/plugin.json`). Ad
 
 Then set the `BOOKSTACK_*` environment variables in your shell so the plugin's MCP server can authenticate.
 
+## MCP Resources
+
+Books and pages are also exposed as MCP resources, so clients that browse resources (Claude Desktop, MCP Inspector, etc.) can `@`-mention them directly:
+
+| URI template | Description |
+|--------------|-------------|
+| `bookstack://book/{id}` | A book, returned as JSON metadata |
+| `bookstack://page/{id}` | A page, returned as markdown plus a JSON metadata blob |
+
+Both templates support `id` autocompletion: as you type, the server searches BookStack and returns matching IDs so you don't have to remember numeric IDs by hand.
+
 ## Available Tools
 
 ### Read Operations (always available)
