@@ -1,7 +1,12 @@
 #!/usr/bin/env node
 
+import { createServer as createHttpServer, IncomingMessage, ServerResponse } from "node:http";
+import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
+import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import { BookStackClient, BookStackConfig } from "./bookstack-client.js";
 
@@ -14,25 +19,18 @@ function getRequiredEnvVar(name: string): string {
   return value;
 }
 
-async function main() {
-  // Load configuration from environment
-  const config: BookStackConfig = {
-    baseUrl: getRequiredEnvVar('BOOKSTACK_BASE_URL'),
-    tokenId: getRequiredEnvVar('BOOKSTACK_TOKEN_ID'),
-    tokenSecret: getRequiredEnvVar('BOOKSTACK_TOKEN_SECRET'),
-    enableWrite: process.env.BOOKSTACK_ENABLE_WRITE?.toLowerCase() === 'true'
-  };
-
-  console.error('Initializing BookStack MCP Server...');
-  console.error(`BookStack URL: ${config.baseUrl}`);
-  console.error(`Write operations: ${config.enableWrite ? 'ENABLED' : 'DISABLED'}`);
-
+function buildServer(config: BookStackConfig): McpServer {
   const client = new BookStackClient(config);
   const server = new McpServer({
     name: "bookstack-mcp",
     version: "2.1.0"
   });
 
+  registerTools(server, client, config);
+  return server;
+}
+
+function registerTools(server: McpServer, client: BookStackClient, config: BookStackConfig): void {
   // Register read-only tools
   server.registerTool(
     "get_capabilities",
@@ -641,11 +639,173 @@ async function main() {
     );
   }
 
-  // Connect via stdio transport
+}
+
+async function startStdio(config: BookStackConfig): Promise<void> {
+  const server = buildServer(config);
   const transport = new StdioServerTransport();
   await server.connect(transport);
-
   console.error("BookStack MCP server running on stdio");
 }
 
-main().catch(console.error);
+type AnyTransport = StreamableHTTPServerTransport | SSEServerTransport;
+
+async function startHttp(config: BookStackConfig): Promise<void> {
+  const port = parseInt(process.env.MCP_HTTP_PORT ?? "8080", 10);
+  const host = process.env.MCP_HTTP_HOST ?? "0.0.0.0";
+  const mcpPath = process.env.MCP_HTTP_PATH ?? "/mcp";
+  const ssePath = process.env.MCP_SSE_PATH ?? "/sse";
+  const messagesPath = process.env.MCP_MESSAGES_PATH ?? "/messages";
+
+  const transports: Record<string, AnyTransport> = {};
+
+  const readJsonBody = (req: IncomingMessage): Promise<unknown> =>
+    new Promise((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      req.on("data", (c: Buffer) => chunks.push(c));
+      req.on("end", () => {
+        const raw = Buffer.concat(chunks).toString("utf8");
+        if (!raw) return resolve(undefined);
+        try { resolve(JSON.parse(raw)); } catch (e) { reject(e); }
+      });
+      req.on("error", reject);
+    });
+
+  const sendJson = (res: ServerResponse, status: number, body: unknown) => {
+    res.writeHead(status, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(body));
+  };
+
+  const httpServer = createHttpServer(async (req, res) => {
+    try {
+      const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+      const pathname = url.pathname;
+
+      // Streamable HTTP endpoint (recommended)
+      if (pathname === mcpPath) {
+        const sessionId = req.headers["mcp-session-id"] as string | undefined;
+        let transport: StreamableHTTPServerTransport | undefined;
+        let parsedBody: unknown;
+
+        if (req.method === "POST") {
+          parsedBody = await readJsonBody(req);
+        }
+
+        if (sessionId && transports[sessionId] instanceof StreamableHTTPServerTransport) {
+          transport = transports[sessionId] as StreamableHTTPServerTransport;
+        } else if (!sessionId && req.method === "POST" && isInitializeRequest(parsedBody)) {
+          transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: () => randomUUID(),
+            onsessioninitialized: (sid) => {
+              transports[sid] = transport!;
+            }
+          });
+          transport.onclose = () => {
+            const sid = transport!.sessionId;
+            if (sid && transports[sid]) delete transports[sid];
+          };
+          const server = buildServer(config);
+          await server.connect(transport);
+        } else {
+          sendJson(res, 400, {
+            jsonrpc: "2.0",
+            error: { code: -32000, message: "Bad Request: No valid session ID provided" },
+            id: null
+          });
+          return;
+        }
+
+        await transport.handleRequest(req, res, parsedBody);
+        return;
+      }
+
+      // Legacy SSE transport: GET /sse establishes the stream
+      if (pathname === ssePath && req.method === "GET") {
+        const transport = new SSEServerTransport(messagesPath, res);
+        transports[transport.sessionId] = transport;
+        res.on("close", () => {
+          delete transports[transport.sessionId];
+        });
+        const server = buildServer(config);
+        await server.connect(transport);
+        return;
+      }
+
+      // Legacy SSE transport: POST /messages?sessionId=...
+      if (pathname === messagesPath && req.method === "POST") {
+        const sid = url.searchParams.get("sessionId") ?? "";
+        const existing = transports[sid];
+        if (!(existing instanceof SSEServerTransport)) {
+          sendJson(res, 400, {
+            jsonrpc: "2.0",
+            error: { code: -32000, message: "Bad Request: Unknown or wrong-protocol session" },
+            id: null
+          });
+          return;
+        }
+        const parsedBody = await readJsonBody(req);
+        await existing.handlePostMessage(req, res, parsedBody);
+        return;
+      }
+
+      // Health check
+      if (pathname === "/health" || pathname === "/") {
+        sendJson(res, 200, { status: "ok", server: "bookstack-mcp", transport: "http" });
+        return;
+      }
+
+      sendJson(res, 404, { error: "Not Found" });
+    } catch (err) {
+      console.error("HTTP handler error:", err);
+      if (!res.headersSent) {
+        sendJson(res, 500, {
+          jsonrpc: "2.0",
+          error: { code: -32603, message: "Internal server error" },
+          id: null
+        });
+      }
+    }
+  });
+
+  httpServer.listen(port, host, () => {
+    console.error(`BookStack MCP server listening on http://${host}:${port}`);
+    console.error(`  Streamable HTTP: ${mcpPath}  (recommended)`);
+    console.error(`  Legacy SSE:      GET ${ssePath}, POST ${messagesPath}?sessionId=...`);
+  });
+
+  const shutdown = async () => {
+    console.error("Shutting down HTTP server...");
+    for (const sid of Object.keys(transports)) {
+      try { await transports[sid].close(); } catch {}
+      delete transports[sid];
+    }
+    httpServer.close(() => process.exit(0));
+  };
+  process.on("SIGINT", shutdown);
+  process.on("SIGTERM", shutdown);
+}
+
+async function main() {
+  const config: BookStackConfig = {
+    baseUrl: getRequiredEnvVar('BOOKSTACK_BASE_URL'),
+    tokenId: getRequiredEnvVar('BOOKSTACK_TOKEN_ID'),
+    tokenSecret: getRequiredEnvVar('BOOKSTACK_TOKEN_SECRET'),
+    enableWrite: process.env.BOOKSTACK_ENABLE_WRITE?.toLowerCase() === 'true'
+  };
+
+  console.error('Initializing BookStack MCP Server...');
+  console.error(`BookStack URL: ${config.baseUrl}`);
+  console.error(`Write operations: ${config.enableWrite ? 'ENABLED' : 'DISABLED'}`);
+
+  const transportMode = (process.env.MCP_TRANSPORT ?? "stdio").toLowerCase();
+  if (transportMode === "http" || transportMode === "sse") {
+    await startHttp(config);
+  } else {
+    await startStdio(config);
+  }
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

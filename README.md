@@ -58,7 +58,7 @@ Add to your Claude Desktop config:
 }
 ```
 
-### LibreChat
+### LibreChat (stdio, single-user)
 
 Add to your `librechat.yaml`:
 
@@ -75,7 +75,62 @@ mcpServers:
       BOOKSTACK_TOKEN_SECRET: "your-token-secret"
 ```
 
+### LibreChat (Streamable HTTP, recommended for production / Docker)
+
+Run the server as a long-lived HTTP service and point LibreChat at the URL. This is the right setup for multi-user or containerized deployments.
+
+Start the server in HTTP mode:
+
+```bash
+MCP_TRANSPORT=http \
+MCP_HTTP_PORT=8080 \
+BOOKSTACK_BASE_URL=https://your-bookstack.com \
+BOOKSTACK_TOKEN_ID=your-token-id \
+BOOKSTACK_TOKEN_SECRET=your-token-secret \
+npx bookstack-mcp
+```
+
+Then configure LibreChat:
+
+```yaml
+mcpServers:
+  bookstack:
+    type: streamable-http
+    url: http://bookstack-mcp:8080/mcp
+```
+
+For older clients that only speak the deprecated HTTP+SSE transport, the same process also exposes `GET /sse` and `POST /messages?sessionId=...`:
+
+```yaml
+mcpServers:
+  bookstack:
+    type: sse
+    url: http://bookstack-mcp:8080/sse
+```
+
+#### HTTP transport environment variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MCP_TRANSPORT` | `stdio` | Set to `http` to enable the HTTP server |
+| `MCP_HTTP_PORT` | `8080` | Port to listen on |
+| `MCP_HTTP_HOST` | `0.0.0.0` | Bind address |
+| `MCP_HTTP_PATH` | `/mcp` | Streamable HTTP endpoint |
+| `MCP_SSE_PATH` | `/sse` | Legacy SSE stream endpoint |
+| `MCP_MESSAGES_PATH` | `/messages` | Legacy SSE POST endpoint |
+
 Restart LibreChat after config changes.
+
+### Claude Code (plugin marketplace)
+
+This repo ships a Claude Code plugin manifest (`.claude-plugin/plugin.json`). Add the marketplace and install:
+
+```
+/plugin marketplace add ttpears/claude-plugins
+/plugin install bookstack-mcp@ttpears-plugins
+```
+
+Then set the `BOOKSTACK_*` environment variables in your shell so the plugin's MCP server can authenticate.
 
 ## Available Tools
 
