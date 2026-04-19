@@ -586,6 +586,59 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
   // Register write tools if enabled
   if (config.enableWrite) {
     writeTool(
+      "create_book",
+      {
+        title: "Create Book",
+        description: "Create a new book in BookStack",
+        inputSchema: {
+          name: z.string().describe("Book name"),
+          description: z.string().optional().describe("Optional: Book description"),
+          tags: z.array(z.object({
+            name: z.string(),
+            value: z.string()
+          }).strict()).optional().describe("Tags for the book")
+        }
+      },
+      async (args) => {
+        const book = await client.createBook({
+          name: args.name,
+          description: args.description,
+          tags: args.tags as any
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(book, null, 2) }]
+        };
+      }
+    );
+
+    writeTool(
+      "create_chapter",
+      {
+        title: "Create Chapter",
+        description: "Create a new chapter within a book",
+        inputSchema: {
+          book_id: z.coerce.number().min(1).describe("Book ID where the chapter will be created"),
+          name: z.string().describe("Chapter name"),
+          description: z.string().optional().describe("Optional: Chapter description"),
+          tags: z.array(z.object({
+            name: z.string(),
+            value: z.string()
+          }).strict()).optional().describe("Tags for the chapter")
+        }
+      },
+      async (args) => {
+        const chapter = await client.createChapter({
+          book_id: args.book_id,
+          name: args.name,
+          description: args.description,
+          tags: args.tags as any
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(chapter, null, 2) }]
+        };
+      }
+    );
+    writeTool(
       "create_page",
       {
         title: "Create Page",
