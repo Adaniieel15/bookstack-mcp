@@ -458,6 +458,31 @@ export class BookStackClient {
     return await this.enhanceChapterResponse(response.data);
   }
 
+  async createBook(data: {
+    name: string;
+    description?: string;
+    tags?: Tag[];
+  }): Promise<any> {
+    if (!this.enableWrite) {
+      throw new Error('Write operations are disabled. Set BOOKSTACK_ENABLE_WRITE=true to enable.');
+    }
+    const response = await this.client.post('/books', data);
+    return this.enhanceBookResponse(response.data);
+  }
+
+  async createChapter(data: {
+    book_id: number;
+    name: string;
+    description?: string;
+    tags?: Tag[];
+  }): Promise<any> {
+    if (!this.enableWrite) {
+      throw new Error('Write operations are disabled. Set BOOKSTACK_ENABLE_WRITE=true to enable.');
+    }
+    const response = await this.client.post('/chapters', data);
+    return await this.enhanceChapterResponse(response.data);
+  }
+
   async createPage(data: {
     name: string;
     html?: string;
