@@ -437,7 +437,8 @@ export class BookStackClient {
 
   async getChapters(bookId?: number, offset = 0, count = 50): Promise<any> {
     const params: any = { offset, count };
-    if (bookId) params.filter = JSON.stringify({ book_id: bookId });
+    
+    if (bookId) params['filter[book_id]'] = bookId;
 
     const response = await this.client.get('/chapters', { params });
     const data = response.data;
