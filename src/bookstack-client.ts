@@ -369,6 +369,11 @@ export class BookStackClient {
     };
   }
 
+  async getBook(id: number): Promise<any> {
+    const response = await this.client.get(`/books/${id}`);
+    return this.enhanceBookResponse(response.data);
+  }
+  
   async getPages(options?: {
     bookId?: number;
     chapterId?: number;
