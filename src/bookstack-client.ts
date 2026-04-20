@@ -1,4 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
+import * as cheerio from 'cheerio';
+import { marked } from 'marked';
 
 export interface BookStackConfig {
   baseUrl: string;
@@ -508,6 +510,61 @@ export class BookStackClient {
     }
     const response = await this.client.put(`/pages/${id}`, data);
     return await this.enhancePageResponse(response.data);
+  }
+
+  async patchPageSection(id: number, data: {
+    target_selector: string;
+    action: 'before' | 'after' | 'replace' | 'append';
+    markdown_content: string;
+  }): Promise<any> {
+    if (!this.enableWrite) {
+      throw new Error('Write operations are disabled. Set BOOKSTACK_ENABLE_WRITE=true to enable.');
+    }
+
+    // 1. Descargamos la página original (HTML Crudo)
+    const response = await this.client.get(`/pages/${id}`);
+    const page = response.data;
+
+    // 2. Traducimos el Markdown de la IA a HTML limpio
+    const newHtml = await marked.parse(data.markdown_content);
+
+    // 3. Cargamos el DOM original en Cheerio (El Cirujano)
+    const $ = cheerio.load(page.html || '', null, false);
+
+    // 4. Buscamos el subtítulo o elemento objetivo
+    const target = $(data.target_selector);
+    if (target.length === 0) {
+      throw new Error(`Target selector '${data.target_selector}' not found in page HTML.`);
+    }
+
+    // 5. Ejecutamos la inyección quirúrgica
+    switch (data.action) {
+      case 'before':
+        target.before(newHtml);
+        break;
+      case 'after':
+        target.after(newHtml);
+        break;
+      case 'replace':
+        target.replaceWith(newHtml);
+        break;
+      case 'append':
+        target.append(newHtml);
+        break;
+      default:
+        throw new Error(`Invalid action: ${data.action}`);
+    }
+
+    // 6. Empaquetamos el nuevo HTML y lo guardamos
+    const finalHtml = $.html();
+    
+    const updateResponse = await this.client.put(`/pages/${id}`, {
+      name: page.name,
+      html: finalHtml,
+      markdown: '' // Forzamos a BookStack a respetar nuestro HTML sin sobreescribirlo
+    });
+
+    return await this.enhancePageResponse(updateResponse.data);
   }
 
   async exportPage(id: number, format: 'html' | 'pdf' | 'markdown' | 'plaintext' | 'zip'): Promise<any> {
