@@ -690,6 +690,30 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
     );
 
     writeTool(
+      "patch_page_section",
+      {
+        title: "Patch Page Section (DOM Injection)",
+        description: "Precisely inject markdown content into a specific section of a page using a CSS selector, without overwriting the entire document. Ideal for adding paragraphs under specific headings.",
+        inputSchema: {
+          id: z.coerce.number().min(1).describe("Page ID"),
+          target_selector: z.string().describe("CSS selector for the target element (e.g., '#bkmrk-my-heading')"),
+          action: z.enum(['before', 'after', 'replace', 'append']).describe("Where to inject the content relative to the target"),
+          markdown_content: z.string().describe("The new markdown content to inject")
+        }
+      },
+      async (args) => {
+        const page = await client.patchPageSection(args.id, {
+          target_selector: args.target_selector,
+          action: args.action,
+          markdown_content: args.markdown_content
+        });
+        return {
+          content: [{ type: "text", text: JSON.stringify(page, null, 2) }]
+        };
+      }
+    );
+    
+    writeTool(
       "create_shelf",
       {
         title: "Create Shelf",
