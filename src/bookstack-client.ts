@@ -369,11 +369,6 @@ export class BookStackClient {
     };
   }
 
-  async getBook(id: number): Promise<any> {
-    const response = await this.client.get(`/books/${id}`);
-    return this.enhanceBookResponse(response.data);
-  }
-
   async getPages(options?: {
     bookId?: number;
     chapterId?: number;
@@ -387,13 +382,13 @@ export class BookStackClient {
       count: Math.min(options?.count || 50, 500)
     };
 
-    // Build filter object
-    const filter: any = { ...options?.filter };
-    if (options?.bookId) filter.book_id = options.bookId;
-    if (options?.chapterId) filter.chapter_id = options.chapterId;
+    if (options?.bookId) params['filter[book_id]'] = options.bookId;
+    if (options?.chapterId) params['filter[chapter_id]'] = options.chapterId;
 
-    if (Object.keys(filter).length > 0) {
-      params.filter = JSON.stringify(filter);
+    if (options?.filter) {
+      for (const [key, value] of Object.entries(options.filter)) {
+        params[`filter[${key}]`] = value;
+      }
     }
 
     if (options?.sort) params.sort = options.sort;
