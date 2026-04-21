@@ -693,12 +693,12 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
       "patch_page_section",
       {
         title: "Patch Page Section (DOM Injection)",
-        description: "Precisely inject markdown content into a specific section of a page using a CSS selector, without overwriting the entire document. Ideal for adding paragraphs under specific headings.",
+        description: "Precisely inject markdown content into a specific section of a page using a CSS selector, without overwriting the entire document. ALWAYS prefer using text-based selectors like :contains() instead of exact IDs, as BookStack IDs are complex to guess.",
         inputSchema: {
           id: z.coerce.number().min(1).describe("Page ID"),
-          target_selector: z.string().describe("CSS selector for the target element (e.g., '#bkmrk-my-heading')"),
+          target_selector: z.string().describe("CSS selector for the target. Use text matching! (e.g., \"h3:contains('Escritura Habilitada')\" or \"p:contains('some text')\"). DO NOT try to guess exact #bkmrk IDs."),
           action: z.enum(['before', 'after', 'replace', 'append']).describe("Where to inject the content relative to the target"),
-          markdown_content: z.string().describe("The new markdown content to inject")
+          markdown_content: z.string().describe("The new markdown content to inject. CRITICAL: Use explicit '\\n\\n' for line breaks and paragraphs in your JSON payload to preserve formatting.")
         }
       },
       async (args) => {
