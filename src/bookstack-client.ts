@@ -439,7 +439,24 @@ export class BookStackClient {
     limit?: number;
   }): Promise<any> {
     const response = await this.client.get(`/pages/${id}`);
-    return await this.enhancePageResponse(response.data, options);
+    const pageData = response.data;
+
+    // 🔥 EL HACK DE AUTONOMÍA (Fallback silencioso) 🔥
+    // Si la IA pide markdown (o es el default) y BookStack lo devuelve vacío porque se creó en HTML...
+    const requestedFormat = options?.format || 'markdown';
+    if (requestedFormat === 'markdown' && !pageData.markdown) {
+      try {
+        // ...hacemos la exportación nativa por debajo de la mesa sin que la IA se entere
+        const exportResponse = await this.client.get(`/pages/${id}/export/markdown`);
+        if (exportResponse.data) {
+          pageData.markdown = exportResponse.data; // Inyectamos el markdown rescatado
+        }
+      } catch (error) {
+        console.error(`Error en fallback de markdown para la página ${id}:`, error);
+      }
+    }
+
+    return await this.enhancePageResponse(pageData, options);
   }
 
   async getChapters(bookId?: number, offset = 0, count = 50): Promise<any> {
