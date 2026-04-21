@@ -282,30 +282,25 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
   );
 
   readTool(
-    "get_pages",
+    "get_page",
     {
-      title: "List Pages",
-      description: "List pages with content previews, word counts, and contextual information",
+      title: "Get Page Content",
+      description: "Get content of a specific page. Returns one content format (default markdown). AGENT NOTE: If your ONLY goal is to inject or append text near a specific heading, DO NOT use this tool to read the page first. Trust the backend and use 'patch_page_section' directly with a text selector to save tokens.",
       inputSchema: {
-        book_id: z.coerce.number().optional().describe("Filter by book ID"),
-        chapter_id: z.coerce.number().optional().describe("Filter by chapter ID"),
-        offset: z.coerce.number().default(0).describe("Pagination offset"),
-        count: z.coerce.number().max(500).default(50).describe("Number of results to return"),
-        sort: z.string().optional().describe("Sort field"),
-        filter: z.record(z.any()).optional().describe("Additional filter criteria")
+        id: z.coerce.number().min(1).describe("Page ID"),
+        format: z.enum(["markdown", "html", "text"]).optional().describe("Which content format to return. Defaults to markdown."),
+        offset: z.coerce.number().min(0).optional().describe("Character offset into the content to start from (default 0)"),
+        limit: z.coerce.number().min(1).max(200000).optional().describe("Max characters of content to return (default 50000)")
       }
     },
     async (args) => {
-      const pages = await client.getPages({
-        bookId: args.book_id,
-        chapterId: args.chapter_id,
+      const page = await client.getPage(args.id, {
+        format: args.format,
         offset: args.offset,
-        count: args.count,
-        sort: args.sort,
-        filter: args.filter
+        limit: args.limit
       });
       return {
-        content: [{ type: "text", text: JSON.stringify(pages, null, 2) }]
+        content: [{ type: "text", text: JSON.stringify(page, null, 2) }]
       };
     }
   );
@@ -669,7 +664,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
       "update_page",
       {
         title: "Update Page",
-        description: "Update an existing page",
+        description: "Update an entire existing page. AGENT NOTE: If you only need to add a new paragraph or section, DO NOT use update_page as it will overwrite the whole document and destroy WYSIWYG formatting. Use 'patch_page_section' instead.",
         inputSchema: {
           id: z.coerce.number().min(1).describe("Page ID"),
           name: z.string().optional().describe("Optional: New page name"),
