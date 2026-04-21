@@ -529,10 +529,6 @@ export class BookStackClient {
     return await this.enhancePageResponse(response.data);
   }
 
-  // Forzamos la conversión de secuencias de texto "\n" a saltos de línea reales
-  const sanitizedMarkdown = data.markdown_content.replace(/\\n/g, '\n');
-  const newHtml = await marked.parse(sanitizedMarkdown);
-  
   async patchPageSection(id: number, data: {
     target_selector: string;
     action: 'before' | 'after' | 'replace' | 'append';
@@ -542,19 +538,12 @@ export class BookStackClient {
       throw new Error('Write operations are disabled. Set BOOKSTACK_ENABLE_WRITE=true to enable.');
     }
 
-    // 1. Descargamos la página original (HTML Crudo)
     const response = await this.client.get(`/pages/${id}`);
     const page = response.data;
 
-    // 🔥 MEJORA DE ROBUSTEZ 🔥
-    // Convertimos secuencias literales de "\n" enviadas por la IA a saltos de línea reales
-    // Esto evita el texto "aplastado" visto en los logs de QA.
     const sanitizedMarkdown = data.markdown_content.replace(/\\n/g, '\n');
-
-    // 2. Traducimos el Markdown sanitizado a HTML limpio
     const newHtml = await marked.parse(sanitizedMarkdown);
 
-    // 3. Cargamos el DOM original en Cheerio
     const $ = cheerio.load(page.html || '', null, false);
 
     // 4. Buscamos el elemento objetivo
