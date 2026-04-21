@@ -546,13 +546,18 @@ export class BookStackClient {
     const response = await this.client.get(`/pages/${id}`);
     const page = response.data;
 
-    // 2. Traducimos el Markdown de la IA a HTML limpio
-    const newHtml = await marked.parse(data.markdown_content);
+    // 🔥 MEJORA DE ROBUSTEZ 🔥
+    // Convertimos secuencias literales de "\n" enviadas por la IA a saltos de línea reales
+    // Esto evita el texto "aplastado" visto en los logs de QA.
+    const sanitizedMarkdown = data.markdown_content.replace(/\\n/g, '\n');
 
-    // 3. Cargamos el DOM original en Cheerio (El Cirujano)
+    // 2. Traducimos el Markdown sanitizado a HTML limpio
+    const newHtml = await marked.parse(sanitizedMarkdown);
+
+    // 3. Cargamos el DOM original en Cheerio
     const $ = cheerio.load(page.html || '', null, false);
 
-    // 4. Buscamos el subtítulo o elemento objetivo
+    // 4. Buscamos el elemento objetivo
     const target = $(data.target_selector);
     if (target.length === 0) {
       throw new Error(`Target selector '${data.target_selector}' not found in page HTML.`);
@@ -576,13 +581,13 @@ export class BookStackClient {
         throw new Error(`Invalid action: ${data.action}`);
     }
 
-    // 6. Empaquetamos el nuevo HTML y lo guardamos
+    // 6. Empaquetamos y guardamos
     const finalHtml = $.html();
     
     const updateResponse = await this.client.put(`/pages/${id}`, {
       name: page.name,
       html: finalHtml,
-      markdown: '' // Forzamos a BookStack a respetar nuestro HTML sin sobreescribirlo
+      markdown: '' 
     });
 
     return await this.enhancePageResponse(updateResponse.data);
