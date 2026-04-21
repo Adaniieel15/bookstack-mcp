@@ -293,6 +293,17 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
         limit: z.coerce.number().min(1).max(200000).optional().describe("Max characters of content to return (default 50000)")
       }
     },
+    async (args) => {
+      const page = await client.getPage(args.id, {
+        format: args.format,
+        offset: args.offset,
+        limit: args.limit
+      });
+      return {
+        content: [{ type: "text", text: JSON.stringify(page, null, 2) }]
+      };
+    }
+  );
 
   readTool(
     "get_chapters",
@@ -658,7 +669,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
           id: z.coerce.number().min(1).describe("Page ID"),
           target_selector: z.string().describe("CSS selector for the target element (e.g., '#bkmrk-my-heading')"),
           action: z.enum(['before', 'after', 'replace', 'append']).describe("Where to inject the content relative to the target"),
-          markdown_content: z.string().describe("The new markdown content to inject. The markdown content to inject. Just write your content naturally with line breaks as you would in any markdown editor; the system will handle the encoding.")
+          markdown_content: z.string().describe("The new markdown content to inject. Just write your content naturally with line breaks; the system will handle the encoding.")
         }
       },
       async (args) => {
