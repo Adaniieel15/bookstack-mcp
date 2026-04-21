@@ -658,7 +658,7 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
           id: z.coerce.number().min(1).describe("Page ID"),
           target_selector: z.string().describe("CSS selector for the target element (e.g., '#bkmrk-my-heading')"),
           action: z.enum(['before', 'after', 'replace', 'append']).describe("Where to inject the content relative to the target"),
-          markdown_content: z.string().describe("The new markdown content to inject. CRITICAL: Use explicit '\\n\\n' for line breaks and paragraphs in your JSON payload to preserve formatting.")
+          markdown_content: z.string().describe("The new markdown content to inject. The markdown content to inject. Just write your content naturally with line breaks as you would in any markdown editor; the system will handle the encoding.")
         }
       },
       async (args) => {
