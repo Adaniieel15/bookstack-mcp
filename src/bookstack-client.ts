@@ -529,6 +529,10 @@ export class BookStackClient {
     return await this.enhancePageResponse(response.data);
   }
 
+  // Forzamos la conversión de secuencias de texto "\n" a saltos de línea reales
+  const sanitizedMarkdown = data.markdown_content.replace(/\\n/g, '\n');
+  const newHtml = await marked.parse(sanitizedMarkdown);
+  
   async patchPageSection(id: number, data: {
     target_selector: string;
     action: 'before' | 'after' | 'replace' | 'append';
