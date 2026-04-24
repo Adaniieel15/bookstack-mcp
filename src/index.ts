@@ -640,19 +640,23 @@ function registerTools(server: McpServer, client: BookStackClient, config: BookS
       "update_page",
       {
         title: "Update Page",
-        description: "Update an existing page",
+        description: "Update an existing page. You can also move the page to a different book or chapter by providing book_id and optionally chapter_id.",
         inputSchema: {
           id: z.coerce.number().min(1).describe("Page ID"),
           name: z.string().optional().describe("Optional: New page name"),
           html: z.string().optional().describe("Optional: New HTML content"),
-          markdown: z.string().optional().describe("Optional: New Markdown content")
+          markdown: z.string().optional().describe("Optional: New Markdown content"),
+          book_id: z.coerce.number().optional().describe("Optional: New Book ID to move the page to"), // NUEVO
+          chapter_id: z.coerce.number().optional().describe("Optional: New Chapter ID to move the page to (must be inside the target book)") // NUEVO
         }
       },
       async (args) => {
         const page = await client.updatePage(args.id, {
           name: args.name,
           html: args.html,
-          markdown: args.markdown
+          markdown: args.markdown,
+          book_id: args.book_id,       // NUEVO
+          chapter_id: args.chapter_id  // NUEVO
         });
         return {
           content: [{ type: "text", text: JSON.stringify(page, null, 2) }]
