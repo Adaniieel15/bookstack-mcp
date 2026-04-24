@@ -521,6 +521,8 @@ export class BookStackClient {
     name?: string;
     html?: string;
     markdown?: string;
+    book_id?: number;    // NUEVO: Permite mover a otro libro
+    chapter_id?: number; // NUEVO: Permite mover a otro capítulo
   }): Promise<any> {
     if (!this.enableWrite) {
       throw new Error('Write operations are disabled. Set BOOKSTACK_ENABLE_WRITE=true to enable.');
